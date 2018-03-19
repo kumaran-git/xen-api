@@ -32,18 +32,24 @@ class FileLock(object):
         self._path = path
         self._lock_file = None
 
-    def lock(self):
+    def _lock(self):
         """Acquire the lock"""
         flags = fcntl.LOCK_EX
         self._lock_file = open(self._path, 'w+')
         fcntl.flock(self._lock_file, flags)
 
-    def unlock(self):
+    def _unlock(self):
         """Unlock and remove the lock file"""
         if self._lock_file:
             fcntl.flock(self._lock_file, fcntl.LOCK_UN)
             self._lock_file.close()
             self._lock_file = None
+
+    def __enter__(self):
+        self._lock()
+
+    def __exit__(self, *args):
+        self._unlock()
 
 
 FILE_LOCK = FileLock(path=LOCK_FILE)
@@ -120,12 +126,11 @@ def _wait_for_nbd_device(nbd_device, connected):
 def connect_nbd(path, exportname):
     """Connects to a free NBD device using nbd-client and returns its path"""
     _call(['modprobe', 'nbd'])
-    FILE_LOCK.lock()
-    nbd_device = _find_unused_nbd_device()
-    cmd = ['nbd-client', '-unix', path, nbd_device, '-name', exportname]
-    _call(cmd)
-    _wait_for_nbd_device(nbd_device=nbd_device, connected=True)
-    FILE_LOCK.unlock()
+    with FILE_LOCK:
+        nbd_device = _find_unused_nbd_device()
+        cmd = ['nbd-client', '-unix', path, nbd_device, '-name', exportname]
+        _call(cmd)
+        _wait_for_nbd_device(nbd_device=nbd_device, connected=True)
     return nbd_device
 
 
@@ -135,12 +140,11 @@ def disconnect_nbd_device(nbd_device):
     This function is idempotent: calling it on an already disconnected device
     does nothing.
     """
-    FILE_LOCK.lock()
-    if _is_nbd_device_connected(nbd_device=nbd_device):
-        cmd = ['nbd-client', '-disconnect', nbd_device]
-        _call(cmd)
-        _wait_for_nbd_device(nbd_device=nbd_device, connected=False)
-    FILE_LOCK.unlock()
+    with FILE_LOCK:
+        if _is_nbd_device_connected(nbd_device=nbd_device):
+            cmd = ['nbd-client', '-disconnect', nbd_device]
+            _call(cmd)
+            _wait_for_nbd_device(nbd_device=nbd_device, connected=False)
 
 
 def _connect_cli(args):
