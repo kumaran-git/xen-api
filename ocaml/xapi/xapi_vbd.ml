@@ -81,6 +81,7 @@ let plug ~__context ~self =
            let nbd_prefix = "hack|nbd:unix:" in
            let is_nbd = String.startswith nbd_prefix params in
            if is_nbd then begin
+             debug "Using nbd-client for VBD.plug of VBD '%s', attach_info.params='%s'" (Ref.string_of self) params;
              let export_name = "qemu_node" in
              let unix_socket_path = params |> Astring.String.cuts ~empty:false ~sep:nbd_prefix |> List.hd |> String.split_on_char '|' |> List.hd in
              NbdClient.start_nbd_client ~unix_socket_path ~export_name
